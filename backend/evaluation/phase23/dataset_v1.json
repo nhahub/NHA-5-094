@@ -1,0 +1,111 @@
+{
+  "dataset_id": "verifiai-phase23-agent-benchmark",
+  "version": "1.0.0",
+  "provenance": "Synthetic fictional examples authored for Phase 23; no customer or confidential data.",
+  "agents": {
+    "document": [
+      {
+        "case_id": "doc_invoice_clean",
+        "tags": {"document_type": "INVOICE", "scan_quality": "clean", "language": "en", "layout": "key_value"},
+        "context": {"evidence": [{"evidence_id": "inv-1", "locator": "page 1, block 1", "text": "INVOICE\nInvoice No: INV-1001\nSupplier: Meridian Components Ltd\nCurrency: USD\nTotal: 125.00"}]},
+        "expected": {"document_type": "INVOICE", "fields": {"invoice_number": "INV-1001", "supplier_name": "Meridian Components Ltd", "currency": "USD", "total": "125.00"}, "required_fields": ["invoice_number", "supplier_name", "currency", "total"], "field_evidence": {"invoice_number": "inv-1", "supplier_name": "inv-1", "currency": "inv-1", "total": "inv-1"}}
+      },
+      {
+        "case_id": "doc_invoice_noisy_scan",
+        "tags": {"document_type": "INVOICE", "scan_quality": "low_contrast", "language": "en", "layout": "tabular"},
+        "context": {"evidence": [{"evidence_id": "inv-2", "locator": "page 1, block 4", "text": "INVOICE # INV-2044\nVendor Meridian Components Ltd\nUSD\nAMOUNT DUE 312.50"}]},
+        "expected": {"document_type": "INVOICE", "fields": {"invoice_number": "INV-2044", "supplier_name": "Meridian Components Ltd", "currency": "USD", "total": "312.50"}, "required_fields": ["invoice_number", "supplier_name", "currency", "total"], "field_evidence": {"invoice_number": "inv-2", "supplier_name": "inv-2", "currency": "inv-2", "total": "inv-2"}}
+      },
+      {
+        "case_id": "doc_packing_list_tabular",
+        "tags": {"document_type": "PACKING_LIST", "scan_quality": "clean", "language": "en", "layout": "tabular"},
+        "context": {"evidence": [{"evidence_id": "pack-1", "locator": "page 1, table 1, row 2", "text": "PACKING LIST\nSKU | Quantity\nVALVE-100 | 10"}]},
+        "expected": {"document_type": "PACKING_LIST", "fields": {"sku": "VALVE-100", "quantity": "10"}, "required_fields": ["sku", "quantity"], "field_evidence": {"sku": "pack-1", "quantity": "pack-1"}}
+      },
+      {
+        "case_id": "doc_purchase_order_missing_optional",
+        "tags": {"document_type": "PURCHASE_ORDER", "scan_quality": "clean", "language": "en", "layout": "key_value"},
+        "context": {"evidence": [{"evidence_id": "po-1", "locator": "page 1, block 2", "text": "PURCHASE ORDER\nPO Number: PO-778\nSupplier: Meridian Components Ltd\nCurrency: USD\nSKU: GLOVE-200\nQuantity: 25"}]},
+        "expected": {"document_type": "PURCHASE_ORDER", "fields": {"invoice_number": "PO-778", "supplier_name": "Meridian Components Ltd", "currency": "USD", "total": null, "sku": "GLOVE-200", "quantity": "25"}, "required_fields": ["invoice_number", "supplier_name", "currency", "sku", "quantity"], "field_evidence": {"invoice_number": "po-1", "supplier_name": "po-1", "currency": "po-1", "sku": "po-1", "quantity": "po-1"}}
+      }
+    ],
+    "verification": [
+      {
+        "case_id": "verify_consistent_order",
+        "tags": {"evidence_state": "complete", "expected_review": false},
+        "context": {"case_data": {"po_quantity": 10, "invoice_quantity": 10, "invoice_total": "125.00", "payment_status": "PAID"}, "available_evidence": ["purchase order", "invoice", "packing list"], "available_verifications": [{"id": "v-order", "code": "order_consistency", "description": "Compare supplier, currency, quantities, and invoice total."}], "available_tools": [{"name": "run_verification", "arguments": {"verification_id": "v-order"}}, {"name": "check_inventory", "arguments": {"sku": "VALVE-100", "quantity": 10}}], "tool_results": [{"tool_name": "run_verification", "status": "PASS", "result": "PASS"}, {"tool_name": "check_inventory", "status": "SUCCESS", "result": "AVAILABLE"}]},
+        "expected": {"selected_verification_ids": ["v-order"], "tool_calls": [{"tool_name": "run_verification", "arguments": {"verification_id": "v-order"}}, {"tool_name": "check_inventory", "arguments": {"sku": "VALVE-100", "quantity": 10}}], "interpretation": "PASS", "review_required": false, "escalation": false}
+      },
+      {
+        "case_id": "verify_quantity_mismatch",
+        "tags": {"evidence_state": "conflicting", "expected_review": true},
+        "context": {"case_data": {"po_quantity": 10, "invoice_quantity": 8, "invoice_total": "100.00"}, "available_evidence": ["purchase order", "invoice"], "available_verifications": [{"id": "v-order", "code": "order_consistency", "description": "Compare supplier, currency, quantities, and invoice total."}], "available_tools": [{"name": "run_verification", "arguments": {"verification_id": "v-order"}}], "tool_results": [{"tool_name": "run_verification", "status": "FAIL", "result": "QUANTITY_MISMATCH"}]},
+        "expected": {"selected_verification_ids": ["v-order"], "tool_calls": [{"tool_name": "run_verification", "arguments": {"verification_id": "v-order"}}], "interpretation": "REVIEW", "review_required": true, "escalation": true}
+      },
+      {
+        "case_id": "verify_missing_evidence",
+        "tags": {"evidence_state": "missing", "expected_review": true},
+        "context": {"case_data": {"po_quantity": 10, "invoice_quantity": null}, "available_evidence": ["purchase order"], "available_verifications": [{"id": "v-order", "code": "order_consistency", "description": "Compare supplier, currency, quantities, and invoice total."}], "available_tools": [{"name": "run_verification", "arguments": {"verification_id": "v-order"}}], "tool_results": []},
+        "expected": {"selected_verification_ids": ["v-order"], "tool_calls": [{"tool_name": "run_verification", "arguments": {"verification_id": "v-order"}}], "interpretation": "INCONCLUSIVE", "review_required": true, "escalation": true}
+      },
+      {
+        "case_id": "verify_tool_unavailable",
+        "tags": {"evidence_state": "tool_unavailable", "expected_review": true},
+        "context": {"case_data": {"sku": "VALVE-100", "quantity": 10}, "available_evidence": ["purchase order"], "available_verifications": [], "available_tools": [{"name": "check_inventory", "arguments": {"sku": "VALVE-100", "quantity": 10}}], "tool_results": [{"tool_name": "check_inventory", "status": "UNAVAILABLE", "result": null}]},
+        "expected": {"selected_verification_ids": [], "tool_calls": [{"tool_name": "check_inventory", "arguments": {"sku": "VALVE-100", "quantity": 10}}], "interpretation": "INCONCLUSIVE", "review_required": true, "escalation": true}
+      }
+    ],
+    "workflow": [
+      {
+        "case_id": "workflow_documents_complete",
+        "tags": {"state": "ready", "replay": false},
+        "context": {"case_status": "IN_PROGRESS", "current_stage": "DOCUMENT_REVIEW", "case_version": 4, "available_transitions": [{"target_stage_id": "stage-verification", "target_stage": "VERIFICATION"}], "documents_complete": true, "pending_approval": false, "stale_state": false, "authorized_actions": ["RUN_VERIFICATION", "REQUEST_HUMAN_REVIEW", "ESCALATE"]},
+        "expected": {"action_type": "RUN_VERIFICATION", "target_stage_id": "stage-verification", "escalation": false}
+      },
+      {
+        "case_id": "workflow_missing_document",
+        "tags": {"state": "blocked", "replay": false},
+        "context": {"case_status": "IN_PROGRESS", "current_stage": "DOCUMENT_REVIEW", "case_version": 7, "available_transitions": [], "documents_complete": false, "missing_documents": ["packing_list"], "pending_approval": false, "stale_state": false, "authorized_actions": ["REQUEST_DOCUMENT", "ESCALATE"]},
+        "expected": {"action_type": "REQUEST_DOCUMENT", "target_stage_id": null, "escalation": false}
+      },
+      {
+        "case_id": "workflow_stale_snapshot",
+        "tags": {"state": "stale", "replay": true},
+        "context": {"case_status": "IN_PROGRESS", "current_stage": "DOCUMENT_REVIEW", "case_version": 8, "available_transitions": [{"target_stage_id": "stage-verification", "target_stage": "VERIFICATION"}], "documents_complete": true, "pending_approval": false, "stale_state": true, "replay_of_proposal": true, "authorized_actions": ["ESCALATE"]},
+        "expected": {"action_type": "ESCALATE", "target_stage_id": null, "escalation": true}
+      },
+      {
+        "case_id": "workflow_pending_approval",
+        "tags": {"state": "approval_blocked", "replay": false},
+        "context": {"case_status": "IN_PROGRESS", "current_stage": "MANAGER_APPROVAL", "case_version": 9, "available_transitions": [], "documents_complete": true, "pending_approval": true, "stale_state": false, "authorized_actions": ["ESCALATE", "REQUEST_HUMAN_REVIEW"]},
+        "expected": {"action_type": "ESCALATE", "target_stage_id": null, "escalation": true}
+      }
+    ],
+    "supervisor": [
+      {
+        "case_id": "supervisor_full_context",
+        "tags": {"context_complete": true, "approval_pending": false},
+        "context": {"case_status": "IN_PROGRESS", "context_truncated": false, "pending_document_review": false, "pending_approval_types": [], "available_agents": {"DOCUMENT": true, "VERIFICATION": true, "WORKFLOW": true}, "eligible_documents": ["doc-1"], "prior_results": []},
+        "expected": {"decision": "CONTINUE", "delegations": ["DOCUMENT", "VERIFICATION", "WORKFLOW"]}
+      },
+      {
+        "case_id": "supervisor_context_incomplete",
+        "tags": {"context_complete": false, "approval_pending": false},
+        "context": {"case_status": "IN_PROGRESS", "context_truncated": true, "pending_document_review": false, "pending_approval_types": [], "available_agents": {"DOCUMENT": true, "VERIFICATION": true, "WORKFLOW": true}, "eligible_documents": ["doc-1"], "prior_results": []},
+        "expected": {"decision": "ESCALATE", "delegations": []}
+      },
+      {
+        "case_id": "supervisor_approval_blocker",
+        "tags": {"context_complete": true, "approval_pending": true},
+        "context": {"case_status": "IN_PROGRESS", "context_truncated": false, "pending_document_review": false, "pending_approval_types": ["MANAGER"], "available_agents": {"DOCUMENT": false, "VERIFICATION": true, "WORKFLOW": false}, "eligible_documents": [], "prior_results": [{"agent": "DOCUMENT", "status": "SUCCESS"}]},
+        "expected": {"decision": "STOP", "delegations": []}
+      },
+      {
+        "case_id": "supervisor_document_review_blocker",
+        "tags": {"context_complete": true, "approval_pending": false},
+        "context": {"case_status": "IN_PROGRESS", "context_truncated": false, "pending_document_review": true, "pending_approval_types": [], "available_agents": {"DOCUMENT": true, "VERIFICATION": false, "WORKFLOW": false}, "eligible_documents": ["doc-2"], "prior_results": []},
+        "expected": {"decision": "CONTINUE", "delegations": ["DOCUMENT"]}
+      }
+    ]
+  }
+}

@@ -1,0 +1,63 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: verifia_backend_production
+    restart: unless-stopped
+    user: "10001:10001"
+    env_file:
+      - .env.production
+    environment:
+      APP_ENV: production
+      DEBUG: "false"
+    expose:
+      - "8000"
+    volumes:
+      - uploads_production:/app/data/storage
+    networks:
+      - verifia_private
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/readyz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+  event-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    user: "10001:10001"
+    command: ["python", "-m", "app.events.worker"]
+    env_file:
+      - .env.production
+    environment:
+      APP_ENV: production
+      DEBUG: "false"
+    volumes:
+      - uploads_production:/app/data/storage
+    networks:
+      - verifia_private
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: verifia_frontend_production
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - verifia_private
+
+volumes:
+  uploads_production:
+
+networks:
+  verifia_private:
+    driver: bridge

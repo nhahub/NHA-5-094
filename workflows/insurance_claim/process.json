@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "process": {
+    "name": "Insurance Claim",
+    "code": "insurance_claim",
+    "description": "Declarative insurance claim intake, verification, financial review, and manager approval workflow."
+  },
+  "version_configuration": {
+    "document_classes": [
+      {
+        "class_id": "claim_form",
+        "label": "Insurance Claim Form",
+        "family": "insurance",
+        "description": "Policyholder-submitted claim details and claim reference.",
+        "aliases": ["claim submission"]
+      },
+      {
+        "class_id": "repair_estimate",
+        "label": "Repair Estimate",
+        "family": "insurance",
+        "description": "Itemized estimate supporting the requested claim amount.",
+        "aliases": ["contractor estimate"]
+      },
+      {
+        "class_id": "unknown",
+        "label": "Unknown",
+        "family": "general",
+        "description": "Use when the source does not support a configured insurance claim document class.",
+        "aliases": []
+      }
+    ],
+    "extraction_schemas": {
+      "claim_form": {
+        "type": "object",
+        "properties": {
+          "claim_number": {"type": ["string", "null"]},
+          "policy_number": {"type": ["string", "null"]},
+          "claimant_name": {"type": ["string", "null"]}
+        },
+        "required": ["claim_number", "policy_number", "claimant_name"],
+        "additionalProperties": false
+      },
+      "repair_estimate": {
+        "type": "object",
+        "properties": {
+          "claim_number": {"type": ["string", "null"]},
+          "estimate_amount": {"type": ["number", "null"], "minimum": 0}
+        },
+        "required": ["claim_number", "estimate_amount"],
+        "additionalProperties": false
+      }
+    },
+    "tool_gateway": {
+      "allowed_tools": {
+        "check_required_documents": {
+          "enabled": true,
+          "allowed_agents": ["DOCUMENT", "VERIFICATION", "SUPERVISOR"]
+        },
+        "run_verification": {
+          "enabled": true,
+          "allowed_agents": ["VERIFICATION", "WORKFLOW", "SUPERVISOR"]
+        },
+        "create_task": {
+          "enabled": true,
+          "allowed_agents": ["DOCUMENT", "WORKFLOW", "SUPERVISOR"]
+        },
+        "request_approval": {
+          "enabled": true,
+          "allowed_agents": ["WORKFLOW", "SUPERVISOR"]
+        },
+        "transition_workflow": {
+          "enabled": true,
+          "allowed_agents": ["WORKFLOW", "SUPERVISOR"]
+        }
+      }
+    }
+  },
+  "stages": [
+    {"code": "CLAIM_SUBMITTED", "name": "Claim Submitted", "stage_order": 1, "is_initial": true},
+    {"code": "DOCUMENT_COLLECTION", "name": "Document Collection", "stage_order": 2},
+    {"code": "CLAIM_VERIFICATION", "name": "Claim Verification", "stage_order": 3},
+    {"code": "FINANCIAL_REVIEW", "name": "Financial Review", "stage_order": 4},
+    {"code": "MANAGER_APPROVAL", "name": "Manager Approval", "stage_order": 5},
+    {"code": "PAYMENT", "name": "Payment", "stage_order": 6, "is_terminal": true}
+  ],
+  "transitions": [
+    {"from": "CLAIM_SUBMITTED", "to": "DOCUMENT_COLLECTION", "name": "Begin document collection"},
+    {"from": "DOCUMENT_COLLECTION", "to": "CLAIM_VERIFICATION", "name": "Documents collected"},
+    {"from": "CLAIM_VERIFICATION", "to": "FINANCIAL_REVIEW", "name": "Claim verified"},
+    {"from": "FINANCIAL_REVIEW", "to": "MANAGER_APPROVAL", "name": "Submit financial review", "required_role": "MANAGER"},
+    {"from": "MANAGER_APPROVAL", "to": "PAYMENT", "name": "Approve claim for payment", "required_role": "MANAGER", "requires_approval": true}
+  ],
+  "requirements": [
+    {"code": "CLAIM_FORM", "name": "Completed claim form", "type": "DOCUMENT", "stage_code": "DOCUMENT_COLLECTION", "configuration": {"document_type": "CLAIM_FORM"}},
+    {"code": "REPAIR_ESTIMATE", "name": "Repair estimate", "type": "DOCUMENT", "stage_code": "DOCUMENT_COLLECTION", "configuration": {"document_type": "REPAIR_ESTIMATE"}},
+    {"code": "CLAIM_REFERENCE_VERIFICATION", "name": "Claim reference verification", "type": "VERIFICATION", "stage_code": "CLAIM_VERIFICATION", "configuration": {"verification_code": "claim_reference_consistency"}},
+    {"code": "MANAGER_SIGNOFF", "name": "Manager sign-off", "type": "APPROVAL", "stage_code": "MANAGER_APPROVAL", "configuration": {"approval_type": "MANAGER"}}
+  ],
+  "verifications": [
+    {
+      "code": "claim_reference_consistency",
+      "name": "Claim reference consistency",
+      "description": "Confirm the claim form and supporting repair estimate refer to the same claim.",
+      "stage_code": "CLAIM_VERIFICATION",
+      "rules": [
+        {"rule_code": "claim_number_matches_estimate", "execution_order": 1, "required": true}
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "code": "claim_number_matches_estimate",
+      "name": "Claim number matches supporting estimate",
+      "rule_type": "EQUALITY",
+      "severity": "CRITICAL",
+      "expression": {
+        "operator": "EQUAL",
+        "left_field": "documents.claim_form.claim_number",
+        "right_field": "documents.repair_estimate.claim_number",
+        "missing_policy": "fail"
+      }
+    }
+  ]
+}

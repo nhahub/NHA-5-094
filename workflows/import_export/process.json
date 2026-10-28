@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "process": {
+    "name": "Import Order Verification",
+    "code": "import_order_verification",
+    "description": "Configurable demonstration of document-driven import order verification."
+  },
+  "version_configuration": {
+    "document_classes": [
+      {"class_id": "purchase_order", "label": "Purchase Order", "family": "commercial", "description": "Buyer-issued authorization for specified goods, quantities, prices, and terms.", "aliases": ["PO"]},
+      {"class_id": "invoice", "label": "Commercial Invoice", "family": "financial", "description": "Supplier request for payment listing ordered goods, amounts, and currency.", "aliases": ["supplier invoice", "tax invoice"]},
+      {"class_id": "packing_list", "label": "Packing List", "family": "logistics", "description": "Shipment record listing packages and the goods and quantities packed.", "aliases": []},
+      {"class_id": "unknown", "label": "Unknown", "family": "general", "description": "Use when the source does not support a configured document class.", "aliases": []}
+    ],
+    "extraction_schemas": {
+      "purchase_order": {
+        "type": "object",
+        "properties": {
+          "order_number": {"type": ["string", "null"]}, "buyer": {"type": ["string", "null"]},
+          "supplier": {"type": ["string", "null"]}, "order_date": {"type": ["string", "null"], "format": "date"},
+          "currency": {"type": ["string", "null"]},
+          "items": {"type": "array", "items": {"type": "object", "properties": {
+            "sku": {"type": ["string", "null"]}, "description": {"type": ["string", "null"]},
+            "quantity": {"type": ["number", "null"], "minimum": 0},
+            "unit_price": {"type": ["number", "null"], "minimum": 0},
+            "amount": {"type": ["number", "null"], "minimum": 0}
+          }, "required": ["sku", "description", "quantity", "unit_price", "amount"], "additionalProperties": false}},
+          "total": {"type": ["number", "null"], "minimum": 0}
+        },
+        "required": ["order_number", "buyer", "supplier", "order_date", "currency", "items", "total"],
+        "additionalProperties": false
+      },
+      "invoice": {
+        "type": "object",
+        "properties": {
+          "invoice_number": {"type": ["string", "null"]}, "supplier": {"type": ["string", "null"]},
+          "invoice_date": {"type": ["string", "null"], "format": "date"},
+          "currency": {"type": ["string", "null"]},
+          "items": {"type": "array", "items": {"type": "object", "properties": {
+            "sku": {"type": ["string", "null"]}, "description": {"type": ["string", "null"]},
+            "quantity": {"type": ["number", "null"], "minimum": 0},
+            "unit_price": {"type": ["number", "null"], "minimum": 0},
+            "amount": {"type": ["number", "null"], "minimum": 0}
+          }, "required": ["sku", "description", "quantity", "unit_price", "amount"], "additionalProperties": false}},
+          "total": {"type": ["number", "null"], "minimum": 0}
+        },
+        "required": ["invoice_number", "supplier", "invoice_date", "currency", "items", "total"],
+        "additionalProperties": false
+      },
+      "packing_list": {
+        "type": "object",
+        "properties": {
+          "shipment_reference": {"type": ["string", "null"]}, "shipper": {"type": ["string", "null"]},
+          "consignee": {"type": ["string", "null"]}, "package_count": {"type": ["integer", "null"], "minimum": 0},
+          "gross_weight": {"type": ["number", "null"], "minimum": 0},
+          "net_weight": {"type": ["number", "null"], "minimum": 0},
+          "items": {"type": "array", "items": {"type": "object", "properties": {
+            "sku": {"type": ["string", "null"]}, "description": {"type": ["string", "null"]},
+            "quantity": {"type": ["number", "null"], "minimum": 0}
+          }, "required": ["sku", "description", "quantity"], "additionalProperties": false}}
+        },
+        "required": ["shipment_reference", "shipper", "consignee", "package_count", "items"],
+        "additionalProperties": false
+      }
+    },
+    "tool_gateway": {
+      "allowed_tools": {
+        "check_required_documents": {"enabled": true, "allowed_agents": ["DOCUMENT", "VERIFICATION", "SUPERVISOR"]},
+        "compare_documents": {"enabled": true, "allowed_agents": ["VERIFICATION", "SUPERVISOR"]},
+        "calculate_order_total": {"enabled": true, "allowed_agents": ["VERIFICATION", "WORKFLOW", "SUPERVISOR"]},
+      "run_verification": {"enabled": true, "allowed_agents": ["VERIFICATION", "WORKFLOW", "SUPERVISOR"]},
+        "check_inventory": {"enabled": true, "integration_type": "ERP", "allowed_agents": ["VERIFICATION", "WORKFLOW"]},
+        "get_customer": {"enabled": true, "integration_type": "ERP", "allowed_agents": ["VERIFICATION", "WORKFLOW"]},
+        "get_payment_status": {"enabled": true, "integration_type": "FINANCE", "allowed_agents": ["VERIFICATION", "WORKFLOW"]},
+        "create_task": {"enabled": true, "allowed_agents": ["DOCUMENT", "WORKFLOW", "SUPERVISOR"]},
+        "request_approval": {"enabled": true, "allowed_agents": ["WORKFLOW", "SUPERVISOR"]},
+        "transition_workflow": {"enabled": true, "allowed_agents": ["WORKFLOW", "SUPERVISOR"]}
+      }
+    },
+    "demo_external_integrations": {
+      "inventory": {"tool": "check_inventory", "integration_type": "ERP", "required": true},
+      "payment": {"tool": "get_payment_status", "integration_type": "FINANCE", "required": true}
+    }
+  },
+  "stages": [
+    {"code": "INTAKE", "name": "Document Intake", "stage_order": 1, "is_initial": true},
+    {"code": "DOCUMENT_REVIEW", "name": "Document Review", "stage_order": 2},
+    {"code": "VERIFICATION", "name": "Verification", "stage_order": 3},
+    {"code": "HUMAN_REVIEW", "name": "Discrepancy Review", "stage_order": 4, "config": {"review_stage": true}},
+    {"code": "MANAGER_APPROVAL", "name": "Manager Approval", "stage_order": 5},
+    {"code": "SHIPPING", "name": "Shipping", "stage_order": 6},
+    {"code": "COMPLETED", "name": "Completed", "stage_order": 7, "is_terminal": true}
+  ],
+  "transitions": [
+    {"from": "INTAKE", "to": "DOCUMENT_REVIEW", "name": "Documents received"},
+    {"from": "DOCUMENT_REVIEW", "to": "VERIFICATION", "name": "Documents processed"},
+    {"from": "VERIFICATION", "to": "HUMAN_REVIEW", "name": "Resolve discrepancy", "condition_config": {"allow_failed_verifications": ["order_consistency"]}},
+    {"from": "HUMAN_REVIEW", "to": "MANAGER_APPROVAL", "name": "Submit for approval"},
+    {"from": "MANAGER_APPROVAL", "to": "SHIPPING", "name": "Manager approved", "requires_approval": true, "required_role": "MANAGER"},
+    {"from": "SHIPPING", "to": "COMPLETED", "name": "Complete shipment"}
+  ],
+  "requirements": [
+    {"code": "PURCHASE_ORDER", "name": "Purchase Order", "type": "DOCUMENT", "stage_code": "DOCUMENT_REVIEW", "configuration": {"document_type": "PURCHASE_ORDER"}},
+    {"code": "COMMERCIAL_INVOICE", "name": "Commercial Invoice", "type": "DOCUMENT", "stage_code": "DOCUMENT_REVIEW", "configuration": {"document_type": "INVOICE"}},
+    {"code": "PACKING_LIST", "name": "Packing List", "type": "DOCUMENT", "stage_code": "DOCUMENT_REVIEW", "configuration": {"document_type": "PACKING_LIST"}},
+    {"code": "ORDER_VERIFICATION", "name": "Order verification", "type": "VERIFICATION", "stage_code": "VERIFICATION", "configuration": {"verification_code": "order_consistency"}},
+    {"code": "MANAGER_SIGNOFF", "name": "Manager sign-off", "type": "APPROVAL", "stage_code": "MANAGER_APPROVAL", "configuration": {"approval_type": "MANAGER"}}
+  ],
+  "verifications": [
+    {"code": "order_consistency", "name": "Order consistency", "description": "Compare supplier, currency, quantities, and invoice arithmetic using configured deterministic rules.", "stage_code": "VERIFICATION", "rules": [
+      {"rule_code": "invoice_supplier_matches_po", "execution_order": 1, "required": true},
+      {"rule_code": "invoice_currency_matches_po", "execution_order": 2, "required": true},
+      {"rule_code": "invoice_quantity_matches_po", "execution_order": 3, "required": true},
+      {"rule_code": "invoice_total_matches_lines", "execution_order": 4, "required": true},
+      {"rule_code": "packing_quantity_matches_invoice", "execution_order": 5, "required": true},
+      {"rule_code": "inventory_is_sufficient", "execution_order": 6, "required": true},
+      {"rule_code": "invoice_payment_is_settled", "execution_order": 7, "required": true}
+    ]}
+  ],
+  "calculations": [
+    {"code": "invoice_line_total", "name": "Sum invoice line amounts", "calculation_type": "FORMULA", "configuration": {"formula": {"operator": "ADD", "operands": [{"type": "AGGREGATE", "path": "documents.invoice.items", "item_field": "amount", "aggregate_op": "SUM"}]}}}
+  ],
+  "rules": [
+    {"code": "invoice_supplier_matches_po", "name": "Invoice supplier matches purchase order", "rule_type": "EQUALITY", "severity": "ERROR", "expression": {"operator": "EQUAL", "left_field": "documents.invoice.supplier", "right_field": "documents.purchase_order.supplier", "missing_policy": "fail"}},
+    {"code": "invoice_currency_matches_po", "name": "Invoice currency matches purchase order", "rule_type": "EQUALITY", "severity": "ERROR", "expression": {"operator": "EQUAL", "left_field": "documents.invoice.currency", "right_field": "documents.purchase_order.currency", "missing_policy": "fail"}},
+    {"code": "invoice_quantity_matches_po", "name": "Invoice quantity matches purchase order", "rule_type": "EQUALITY", "severity": "CRITICAL", "expression": {"operator": "EQUAL", "left_field": "documents.invoice.items.0.quantity", "right_field": "documents.purchase_order.items.0.quantity", "missing_policy": "fail"}},
+    {"code": "invoice_total_matches_lines", "name": "Invoice total matches line sum", "rule_type": "TOLERANCE", "severity": "CRITICAL", "expression": {"operator": "WITHIN_TOLERANCE", "left_field": "documents.invoice.total", "right_field": "invoice_line_total", "tolerance": 0.02, "tolerance_type": "ABSOLUTE", "missing_policy": "fail"}},
+    {"code": "packing_quantity_matches_invoice", "name": "Packing quantity matches invoice quantity", "rule_type": "EQUALITY", "severity": "ERROR", "expression": {"operator": "EQUAL", "left_field": "documents.packing_list.items.0.quantity", "right_field": "documents.invoice.items.0.quantity", "missing_policy": "fail"}},
+    {"code": "inventory_is_sufficient", "name": "Inventory covers the ordered quantity", "rule_type": "EQUALITY", "severity": "CRITICAL", "expression": {"operator": "EQUAL", "left_field": "tools.check_inventory.decision", "expected_value": "AVAILABLE", "missing_policy": "raise"}},
+    {"code": "invoice_payment_is_settled", "name": "Invoice payment is settled", "rule_type": "EQUALITY", "severity": "CRITICAL", "expression": {"operator": "EQUAL", "left_field": "tools.get_payment_status.status", "expected_value": "PAID", "missing_policy": "raise"}}
+  ]
+}
