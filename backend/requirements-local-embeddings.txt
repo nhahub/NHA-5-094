@@ -1,0 +1,6 @@
+# Optional dependencies for EMBEDDING_PROVIDER=local.
+# sentence-transformers installs PyTorch and its model runtime; API-based embedding
+# providers and the normal CI/test environment do not need these packages.
+-r requirements.txt
+sentence-transformers>=3.0.0
+huggingface-hub>=0.24.0
